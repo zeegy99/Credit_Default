@@ -1,55 +1,38 @@
-import csv
 import pandas as pd
 from datetime import datetime
-import numpy as np
-import math
 
+# --- Load ---
+t_bill_10y = pd.read_csv('data/DGS10.csv')
+t_bill_2y = pd.read_csv('data/DGS2.csv')
+b_a = pd.read_csv('data/BAA_AAA.csv')
 
-#Data Collection
-corporate_bond_spread = pd.read_csv('data/corporate_bond_spread_csv.csv') #Header: {Date, Value} Shape: (7634, 2) 
-corporate_bond_spread = corporate_bond_spread.rename(columns={'Date': 'observation_date'})
+# --- Convert to numeric (handles FRED's "." missing values) ---
+t_bill_10y['DGS10'] = pd.to_numeric(t_bill_10y['DGS10'], errors='coerce')
+t_bill_2y['DGS2'] = pd.to_numeric(t_bill_2y['DGS2'], errors='coerce')
+b_a['BAA_AAA'] = pd.to_numeric(b_a['BAA_AAA'], errors='coerce')
 
-FRED_yield_spread = pd.read_csv('data/FRED_high_yield_index_spread_csv.csv') #Header: {observation_date, BAMLH0A0HYM2} Shape: (2644, 2) Start Date: 2016-03-30
-unemployment = pd.read_csv('data/unemployment_csv.csv') #Header: {observation_date, UNRATE} #Shape: (120, 2) Start date: 2016-03-01
+# --- Standardize dates ---
+for df in [t_bill_10y, t_bill_2y, b_a]:
+    df['observation_date'] = pd.to_datetime(df['observation_date'])
 
-market_rates = pd.read_csv('data/fed_funds_rate_csv.csv') 
-market_rates = market_rates.rename(columns={'Effective Date' : 'observation_date'})
-market_rates = market_rates[(market_rates['observation_date'].notna())]
-'''Index(['Effective Date', 'Rate Type', 'Rate (%)', '1st Percentile (%)',
-       '25th Percentile (%)', '75th Percentile (%)', '99th Percentile (%)',
-       'Volume ($Billions)', 'Target Rate From (%)', 'Target Rate To (%)',
-       'Intra Day - Low (%)', 'Intra Day - High (%)', 'Standard Deviation (%)',
-       '30-Day Average SOFR', '90-Day Average SOFR', '180-Day Average SOFR',
-       'SOFR Index', 'Revision Indicator (Y/N)', 'Footnote ID'],
-      dtype='str')
+# --- Filter date range ---
+start = pd.Timestamp('1962-01-02')
+end = pd.Timestamp('2026-03-01')
 
-      Shape: (11051, 19)
+t_bill_10y = t_bill_10y[(t_bill_10y['observation_date'] >= start) & (t_bill_10y['observation_date'] <= end)]
+t_bill_2y  = t_bill_2y[ (t_bill_2y['observation_date']  >= start) & (t_bill_2y['observation_date']  <= end)]
+b_a        = b_a[       (b_a['observation_date']        >= start) & (b_a['observation_date']        <= end)]
 
-      '''
+# --- Merge everything on date ---
+df = pd.merge(t_bill_10y, t_bill_2y, on='observation_date')
+df = pd.merge(df, b_a, on='observation_date')
 
-#Data Normalization
-data = [corporate_bond_spread, FRED_yield_spread, unemployment, market_rates]
-'''Earliest is 2016-03-01, Latest is 2026-02-01'''
-if 1:
-    for dataset in data:
-        min_date = dataset['observation_date'].iloc[0]
-        max_date = dataset['observation_date'].iloc[-1]
-        print(min_date, max_date)
+# --- Build features ---
+df['10Y-2Y_spread']    = df['DGS10'] - df['DGS2']
+df['Premium_BBB_Spread'] = df['BAA_AAA']
 
-normal_format_string = "%Y-%m-%d"
-strange_format_string = "%m/%d/%Y"
+# --- Drop NaNs ---
+df = df.dropna()
 
-start = datetime.strptime('2016-03-01', normal_format_string)
-end = datetime.strptime('2026-02-01', normal_format_string)
-
-strange_format_string = [corporate_bond_spread, market_rates]
-normal_format_string = [FRED_yield_spread, unemployment]
-
-for dataset in strange_format_string:
-    print("original shape", dataset.shape)
-    dataset['observation_date'] = pd.to_datetime(dataset['observation_date'])
-    dataset = dataset[(dataset['observation_date'] >= start and dataset['observation_date'] <= end)]
-
-    print("after shape", dataset.shape)
-# print(type(market_rates['observation_date'].iloc[0]))
-# print(type(datetime.strptime(market_rates['observation_date'].iloc[1], strange_format_string)))
+print(df.shape)
+print(df.head())
